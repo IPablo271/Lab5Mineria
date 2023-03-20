@@ -1,0 +1,167 @@
+---
+title: "Lab4"
+author: "Javier Mombiela, Jose Hernandez, Pablo Gonzalez"
+date: "2023-03-10"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(cluster) #Para calcular la silueta
+library(e1071)#para cmeans
+library(mclust) #mixtures of gaussians
+library(fpc) #para hacer el plotcluster
+library(NbClust) #Para determinar el número de clusters óptimo
+library(factoextra) #Para hacer gráficos bonitos de clustering
+library(hopkins) #Para revisar si vale la pena hacer agrupamiento
+library(GGally) #Para hacer el conjunto de graficos
+library(FeatureImpCluster) #Para revisar la importancia de las variables en los grupos.
+library(pheatmap) #Para hacer mapa de calor
+library(dplyr)
+library(nortest)
+library(rpart)
+library(caret)
+library(tree)
+library(rpart.plot)
+library(randomForest)
+
+```
+
+## Lab 5 Bayes Ingenuo 
+
+```{r}
+datos <-read.csv("train.csv")
+datos_numericos <-select_if(datos,is.numeric)
+datos_numericos <-datos_numericos[complete.cases(datos_numericos),]
+
+```
+
+## Data frame normalizado
+```{r}
+datos_numericos <-scale(na.omit(datos_numericos))
+```
+# 1.1 Datos de train y datos de test
+## Datos de entrenamiento y datos de test
+```{r}
+id <- as.numeric(datos_numericos[,"Id"])
+GrLivArea <- as.numeric(datos_numericos[,"GrLivArea"])
+OverallQual <- as.numeric(datos_numericos[,"OverallQual"])
+SalePrice <- as.numeric(datos_numericos[,"SalePrice"])
+datos_regresion <- data.frame(id,GrLivArea,OverallQual,SalePrice)
+  
+porcentaje <-0.7
+corte <-sample(nrow(datos_regresion),nrow(datos_regresion)*porcentaje)
+train <-data.frame(datos_numericos[corte,])
+test <- data.frame(datos_numericos[-corte,])
+```
+
+
+## Datos de entrenamiento 2 y datos de test 2
+
+```{r}
+datos_numericos <-data.frame(datos_numericos)
+SalePrices <- datos_numericos$SalePrice
+q1 <- quantile(datos_numericos$SalePrice,0.33)
+q2 <- quantile(datos_numericos$SalePrice,0.5)
+q3 <-quantile(datos_numericos$SalePrice,0.7)
+datos_numericos$Classification <- sapply(datos_numericos$SalePrice, function(x) ifelse(x <= q1, "Economicas", ifelse(x >= q2 && x <= q3, "Intermedias", "Caras")))
+datos_numericos$Classification <-factor(datos_numericos$Classification)
+```
+
+## Hacer el data set con las nuevas variables
+
+```{r}
+table(datos_numericos$Classification)
+table(datos_numericos$Classification)
+
+dfEcon <- subset(datos_numericos,Classification == "Economicas")
+dfMed <- subset(datos_numericos, Classification == "Intermedias")
+dfCaras <-subset(datos_numericos,Classification == "Caras")
+
+
+
+datosf <- rbind(dfEcon,dfMed,dfCaras)
+
+id <- as.numeric(datosf[,"Id"])
+GrLivArea <- as.numeric(datosf[,"GrLivArea"])
+OverallQual <- as.numeric(datosf[,"OverallQual"])
+SalePrice <- as.numeric(datosf[,"SalePrice"])
+Clas <- datosf[,"Classification"]
+datos_regresion2 <- data.frame(id,GrLivArea,OverallQual,SalePrice,Clas)
+
+random_row_order <- sample(rownames(datos_regresion2))
+
+datos_regresion2 <-datos_regresion2[random_row_order,]
+
+porcentaje <-0.7
+corte <-sample(nrow(datos_regresion2),nrow(datos_regresion2)*porcentaje)
+
+train2 <-data.frame(datosf[corte,])
+test2 <- data.frame(datosf[-corte,])
+```
+
+
+# 1.2 Crecaion de modelo Naive Bayes
+```{r}
+modelo <- naiveBayes(SalePrice ~., data = train)
+prediccion <- predict(modelo, newdata = test)
+prediccion <- as.numeric(as.character(prediccion))
+plot(test$SalePrice, col="green")
+points(prediccion,col="red")
+```
+```{r}
+R2 <- 1 - sum((test$SalePrice-prediccion)^2, na.rm = T) /sum((test$SalePrice-mean(test$SalePrice))^2, na.rm = T)
+R2
+```
+El modelo se puede mencionar que tiene un r^2 de 0.6340
+
+
+# 1.3 Creacion de modelo de caksuficacion naib
+```{r}
+modelo2 <- naiveBayes(train2$Classification ~.,data = train2)
+```
+
+# 1.4 Predecir el modelo de clasificacuon Naive Bayes
+```{r}
+Prediccion2 <-predict(modelo2, newdata = test2)
+cm<-caret::confusionMatrix(Prediccion2,test2$Classification)
+cm
+```
+# 1.5 Analisis de los resultados del algoritmo:
+
+Se puede mencionar que el modelo es medianamente bueno esto debido a que tiene una presicion del 0.73 lo cual es aceptable pero se buscaria que el modelo tuviera un poco mas de de precision.
+
+# 1.6
+Se puede mencionar que comparando con los modelos descritos de las ojas pasadas estos han sido muy similares entre si ya que han presentado un accurcy del 0.70 a 0.80 pero hubo un modelo que reslato mas el cual obtuvo un accurcy del casi 0.99 lo cual es un valor muy alto aunque se peude decir que los modelos son buenos siempre se buscara un modo de mejorarlos para tener un accurcy mayor al que se esta presentando.
+
+# 1.7 Analisis de  los resultados del modelo de clasificacion
+Segun nuestra matriz de confusion se puede visualizar que el modelo es muy bueno para predecir los valores de casas economicas y es un poco malo para predecir el precio de casas caras y predecir tambien para predecir casas Intermedias ya que para las casas economicas se obtuvo una sensibilidad del 0.95 mientras que para los otros 2 se obuvo unsa sensibilidad menor al 0.7.
+
+# 1.8 overfitting
+```{r}
+Prediccion3 <-predict(modelo2, newdata = train2)
+
+cm2<-caret::confusionMatrix(Prediccion3,train2$Classification)
+cm2
+
+
+```
+Como se puede visualizar en esta matriz el accurcy es de 0.75 por lo que es mayor al accurcy del train es mayor por lo que a partir de esto se puede concluir que no existe nigun tipo de sobreajustamiento en nuestro modelo.
+
+# 1.9 CrossValidation
+```{r}
+train_sin_variable <- train2[ , !(names(train2) %in% c("Classification"))]
+ct <- trainControl(method = "cv",number=10, verboseIter=T)
+modelo3 <- caret::train(train_sin_variable, train2$Classification, trControl = ct, method="naive_bayes")
+y3pred <- predict(modelo3,newdata = test2)
+cm3 <- table(test2$Classification,y3pred)
+cm3
+```
+# 1.10 comprar con los otros modelos
+
+Se puede mencionar que este fue un modelo el cual no nos fue tambien ya que tuvo unn accurcy de 0.73 mientras que el modelo de arbol de regresion nos presento un mayor accurcy este casi cercano a uno por lo que este fue nuestro mejor modeloy en comparacion con random forest este lo hizo mejor que random forest por lo que tomaria el segundo puesto entre los modelos propuestos.
+
+
+
